@@ -1,0 +1,6 @@
+[Unit]
+Description=Auto-scale Tor hosting instances based on account count
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/php8.2 /var/www/autoscale.php

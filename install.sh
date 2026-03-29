@@ -329,36 +329,10 @@ if [ -z "$ONION_ADDR" ]; then
 fi
 
 log_ok "Onion address: ${GREEN}${ONION_ADDR}${NC}"
-
-# Auto-calculate instance count based on RAM
-# ~250 accounts per instance, ~128MB RAM per instance overhead
-# 4GB = 1 instance, 8GB = 2, 16GB = 4, 32GB+ = 8
-RAM_GB=$(free -g | awk '/Mem:/{print $2}')
-if [ "$RAM_GB" -ge 32 ]; then
-    INSTANCE_COUNT=8
-elif [ "$RAM_GB" -ge 16 ]; then
-    INSTANCE_COUNT=4
-elif [ "$RAM_GB" -ge 8 ]; then
-    INSTANCE_COUNT=2
-else
-    INSTANCE_COUNT=1
-fi
-
-INSTANCE_CHARS="abcdefgh"
-INSTANCES=""
-for i in $(seq 0 $((INSTANCE_COUNT - 1))); do
-    c=${INSTANCE_CHARS:$i:1}
-    [ -n "$INSTANCES" ] && INSTANCES="$INSTANCES,"
-    INSTANCES="$INSTANCES'$c'"
-done
-
-log_info "RAM: ${RAM_GB}GB -> $INSTANCE_COUNT instance(s)"
-
 log_step "Step 8: Configure hosting"
 
 ADMIN_HASH=$(php8.2 -r "echo password_hash('$ADMIN_PASS', PASSWORD_DEFAULT);" 2>/dev/null || \
              php8.5 -r "echo password_hash('$ADMIN_PASS', PASSWORD_DEFAULT);")
-sed -i "s|const SERVICE_INSTANCES=\['a'\]|const SERVICE_INSTANCES=[$INSTANCES]|" /var/www/common.php
 sed -i "s|const DBPASS='MY_PASSWORD'|const DBPASS='$DB_HOSTING_PASS'|" /var/www/common.php
 sed -i "s|const ADMIN_PASSWORD='MY_PASSWORD'|const ADMIN_PASSWORD='$ADMIN_HASH'|" /var/www/common.php
 sed -i "s|const ONION_KEY_ENCRYPTION_KEY=''|const ONION_KEY_ENCRYPTION_KEY='$ONION_ENC_KEY'|" /var/www/common.php
@@ -533,7 +507,8 @@ else
 fi
 log_step "Step 16: Final configuration"
 
-systemctl enable hosting-del.timer hosting.timer
+systemctl enable hosting-del.timer hosting.timer hosting-autoscale.timer
+systemctl start hosting-autoscale.timer
 sed -i 's/^Subsystem/#Subsystem/' /etc/ssh/sshd_config
 systemctl restart nginx postfix dovecot
 systemctl restart tor@default.service
@@ -551,7 +526,7 @@ echo ""
 echo -e "${BOLD}Credentials saved to:${NC} $CREDS_FILE"
 echo ""
 echo -e "${BOLD}PHP Versions:${NC} 8.2, 8.3, 8.4, 8.5 (default: 8.5)"
-echo -e "${BOLD}Instances:${NC}    $INSTANCE_COUNT (RAM: ${RAM_GB}GB, ~$((INSTANCE_COUNT * 250)) max accounts)"
+echo -e "${BOLD}Instances:${NC}    auto-scaling (1 per ~250 accounts, checked hourly)"
 echo ""
 echo -e "${YELLOW}Recommended: Reboot the server now and wait ~5 minutes for all services to start.${NC}"
 echo ""
