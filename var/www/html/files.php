@@ -3,17 +3,32 @@ require('../common.php');
 $db = get_db_instance();
 $user=check_login();
 if(!empty($_POST['sftp_pass'])){
-	$_SESSION['sftp_pass']=$_POST['sftp_pass'];
+	$sftp_key = random_bytes(SODIUM_CRYPTO_SECRETBOX_KEYBYTES);
+	$sftp_nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+	$_SESSION['sftp_enc'] = base64_encode($sftp_nonce . sodium_crypto_secretbox($_POST['sftp_pass'], $sftp_nonce, $sftp_key));
+	$_SESSION['sftp_key'] = base64_encode($sftp_key);
+	$_SESSION['sftp_expiry'] = time() + 3600; // 1 hour expiry
 }
-if(empty($_SESSION['sftp_pass'])){
+$sftp_pass = '';
+if(!empty($_SESSION['sftp_enc']) && !empty($_SESSION['sftp_key']) && ($_SESSION['sftp_expiry'] ?? 0) > time()){
+	$raw = base64_decode($_SESSION['sftp_enc']);
+	$key = base64_decode($_SESSION['sftp_key']);
+	$nonce = substr($raw, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+	$cipher = substr($raw, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+	$sftp_pass = sodium_crypto_secretbox_open($cipher, $nonce, $key);
+}
+if(empty($sftp_pass)){
+	unset($_SESSION['sftp_enc'], $_SESSION['sftp_key'], $_SESSION['sftp_expiry']);
 	send_login();
 	exit;
 }
 $ssh=ssh2_connect('127.0.0.1') or die (_('No Connection to SFTP server!'));
-if(@!ssh2_auth_password($ssh, $user['system_account'], $_SESSION['sftp_pass'])){
+if(@!ssh2_auth_password($ssh, $user['system_account'], $sftp_pass)){
+	unset($_SESSION['sftp_enc'], $_SESSION['sftp_key'], $_SESSION['sftp_expiry']);
 	send_login();
 	exit;
 }
+sodium_memzero($sftp_pass);
 $sftp = ssh2_sftp($ssh);
 //prepare reusable data
 const TYPES=[
@@ -93,8 +108,10 @@ if(!isset($_REQUEST['O']) || !in_array($_REQUEST['O'], array('A', 'D'))){
 }
 if(!empty($_REQUEST['path'])){
 	$dir='/'.trim(rawurldecode($_REQUEST['path']),'/').'/';
-	$dir=str_replace('..', '\.\.', $dir);
 	$dir=preg_replace('~//+~', '/', $dir);
+	if(str_contains($dir, '..')){
+		$dir='/www/';
+	}
 }else{
 	$dir='/www/';
 }
@@ -147,6 +164,9 @@ if(isset($_POST['rename_2']) && !empty($_POST['files'])){
 		die($error);
 	}
 	foreach($_POST['files'] as $old=>$new){
+		if(str_contains($new, '/') || str_contains($new, '..') || str_contains($old, '/') || str_contains($old, '..')){
+			continue;
+		}
 		@ssh2_sftp_rename($sftp, "$dir/$old", "$dir/$new");
 	}
 }
@@ -317,15 +337,6 @@ foreach($list as $element){
 <button type="submit" name="edit"><?php echo _('Edit'); ?></button>
 <button type="submit" name="unzip"><?php echo _('Unzip'); ?></button><br><br>
 </form>
-<script>
-document.getElementById('checkAllParent').innerHTML = '<input type="checkbox" onclick="toggle(this);">';
-function toggle(source) {
-  let checkboxes = document.getElementsByClassName('fileCheck');
-  for(let i=0, n=checkboxes.length;i<n;i++) {
-    checkboxes[i].checked = source.checked;
-  }
-}
-</script>
 </body></html>
 <?php
 

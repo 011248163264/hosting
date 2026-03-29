@@ -1,6 +1,6 @@
 <?php
 require_once(__DIR__ . '/vendor/autoload.php');
-const DBHOST='localhost'; // Database host
+const DBHOST='127.0.0.1'; // Database host
 const DBUSER='hosting'; // Database user
 const DBPASS='MY_PASSWORD'; // Database password
 const DBNAME='hosting'; // Database
@@ -26,11 +26,11 @@ const INDEX_MD5S=[ //MD5 sums of index.hosting.html files that should be conside
 ];
 const REQUIRE_APPROVAL=false; //require admin approval of new sites? true/false
 const ENABLE_SHELL_ACCESS=true; //allows users to login via ssh, when disabled only sftp is allowed - run setup.php to migrate existing accounts
-const ADMIN_PASSWORD='MY_PASSWORD'; //password for admin interface
+const ADMIN_PASSWORD='MY_PASSWORD'; //password hash for admin interface - generate with: php -r "echo password_hash('yourpassword', PASSWORD_DEFAULT);"
 const SERVICE_INSTANCES=['a']; //one character per instance - run multiple tor+php-fpm instances for load balancing, remove all but one instance if you expect less than 200 accounts. If tor starts using 100% cpu and failing circuits every few hours after a restart, add more instances. In my experience this happens around 250 hidden services per instance - run setup.php after change
 const DISABLED_PHP_VERSIONS=[]; //php versions still installed on the system but no longer offered for new accounts
-const PHP_VERSIONS=[7 => '8.1', 8 => '8.2']; //currently active php versions
-const DEFAULT_PHP_VERSION='8.2'; //default php version
+const PHP_VERSIONS=[8 => '8.2', 9 => '8.3', 10 => '8.4', 11 => '8.5']; //currently active php versions
+const DEFAULT_PHP_VERSION='8.5'; //default php version
 const PHP_CONFIG='zend_extension=opcache.so
 memory_limit = 256M
 error_reporting = E_ALL
@@ -86,6 +86,7 @@ const COINPAYMENTS_PRIVATE = 'COINPAYMENTS_PRIVATE'; //Coinpayments private API 
 const COINPAYMENTS_PUBLIC = 'COINPAYMENTS_PUBLIC'; //Coinpayments public API key
 const COINPAYMENTS_MERCHANT_ID = 'COINPAYMENTS_MERCHANT_ID'; //Coinpayments merchant ID
 const COINPAYMENTS_IPN_SECRET = 'COINPAYMENTS_IPN_SECRET'; //Coinpayments IPN secret
+const ONION_KEY_ENCRYPTION_KEY=''; //32-byte hex key to encrypt onion private keys at rest - generate with: php -r "echo bin2hex(random_bytes(32));"
 const COINPAYMENTS_FAKE_BUYER_EMAIL = 'daniel@danwin1210.me'; //fixed email used for the required buyer email field
 const SITE_NAME = "Daniel's Hosting"; //globally changes the sites title
 const HOME_MOUNT_PATH = '/home'; //mount path of the home directory. Usually /home as own partition or / on a system with no extra home partition
@@ -114,7 +115,7 @@ if(isset($_REQUEST['lang']) && isset(LANGUAGES[$_REQUEST['lang']])){
 	$locale = LANGUAGES[$_REQUEST['lang']]['locale'];
 	$language = $_REQUEST['lang'];
 	$dir = LANGUAGES[$_REQUEST['lang']]['dir'];
-	setcookie('language', $_REQUEST['lang'], ['expires' => 0, 'path' => '/', 'domain' => '', 'secure' => ($_SERVER['HTTPS'] ?? '' === 'on'), 'httponly' => true, 'samesite' => 'Strict']);
+	setcookie('language', $_REQUEST['lang'], ['expires' => 0, 'path' => '/', 'domain' => '', 'secure' => (($_SERVER['HTTPS'] ?? '') === 'on'), 'httponly' => true, 'samesite' => 'Strict']);
 }elseif(isset($_COOKIE['language']) && isset(LANGUAGES[$_COOKIE['language']])){
 	$locale = LANGUAGES[$_COOKIE['language']]['locale'];
 	$language = $_COOKIE['language'];
@@ -134,7 +135,7 @@ if(isset($_REQUEST['lang']) && isset(LANGUAGES[$_REQUEST['lang']])){
 			$locale = LANGUAGES[$lang]['locale'];
 			$language = $lang;
 			$dir = LANGUAGES[$lang]['dir'];
-			setcookie('language', $lang, ['expires' => 0, 'path' => '/', 'domain' => '', 'secure' => ($_SERVER['HTTPS'] ?? '' === 'on'), 'httponly' => true, 'samesite' => 'Strict']);
+			setcookie('language', $lang, ['expires' => 0, 'path' => '/', 'domain' => '', 'secure' => (($_SERVER['HTTPS'] ?? '') === 'on'), 'httponly' => true, 'samesite' => 'Strict']);
 			break;
 		}
 	}
@@ -192,9 +193,9 @@ function send_captcha(): void
 	$length = strlen($captchachars)-1;
 	$code = '';
 	for($i = 0; $i < 5; ++$i){
-		$code .= $captchachars[mt_rand(0, $length)];
+		$code .= $captchachars[random_int(0, $length)];
 	}
-	$randid = mt_rand();
+	$randid = random_int(1, 2147483647);
 	$time = time();
 	$db = get_db_instance();
 	$stmt = $db->prepare('INSERT INTO captcha (id, time, code) VALUES (?, ?, ?);');
@@ -215,11 +216,11 @@ function send_captcha(): void
 		imagestring($im, 5, 5, 5, $code, $fg);
 		$line = imagecolorallocate($im, 255, 255, 255);
 		for($i = 0; $i < 2; ++$i){
-			imageline($im, 0, mt_rand(0, 24), 55, mt_rand(0, 24), $line);
+			imageline($im, 0, random_int(0, 24), 55, random_int(0, 24), $line);
 		}
 		$dots = imagecolorallocate($im, 255, 255, 255);
 		for($i = 0; $i < 100; ++$i){
-			imagesetpixel($im, mt_rand(0, 55), mt_rand(0, 24), $dots);
+			imagesetpixel($im, random_int(0, 55), random_int(0, 24), $dots);
 		}
 		echo '<img width="55" height="24" src="data:image/gif;base64,';
 	}elseif(CAPTCHA === 3){
@@ -230,15 +231,15 @@ function send_captcha(): void
 		$cb = imagecolorallocatealpha($im, 0, 0, 0, 127);
 		imagefill($im, 0, 0, $bg);
 		$line = imagecolorallocate($im, 255, 255, 255);
-		$deg = (mt_rand(0,1)*2-1)*mt_rand(10, 20);
+		$deg = (random_int(0,1)*2-1)*random_int(10, 20);
 
 		$background = imagecreatetruecolor(120, 80);
 		imagefill($background, 0, 0, $cb);
 
 		for ($i=0; $i<20; ++$i) {
 			$char=imagecreatetruecolor(12, 16);
-			imagestring($char, 5, 2, 2, $captchachars[mt_rand(0, $length)], $cc);
-			$char = imagerotate($char, (mt_rand(0,1)*2-1)*mt_rand(10, 20), $cb);
+			imagestring($char, 5, 2, 2, $captchachars[random_int(0, $length)], $cc);
+			$char = imagerotate($char, (random_int(0,1)*2-1)*random_int(10, 20), $cb);
 			$char = imagescale($char, 24, 32);
 			imagefilter($char, IMG_FILTER_SMOOTH, 0.6);
 			imagecopy($background, $char, rand(0, 100), rand(0, 60), 0, 0, 24, 32);
@@ -255,9 +256,9 @@ function send_captcha(): void
 		$im = $background;
 
 		for($i=0;$i<1000;++$i){
-			$c = mt_rand(100,230);
+			$c = random_int(100,230);
 			$dots=imagecolorallocate($im, $c, $c, $c);
-			imagesetpixel($im, mt_rand(0, 120), mt_rand(0, 80), $dots);
+			imagesetpixel($im, random_int(0, 120), random_int(0, 80), $dots);
 		}
 		imagedestroy($char);
 		echo '<img width="120" height="80" src="data:image/png;base64,';
@@ -268,18 +269,18 @@ function send_captcha(): void
 		imagefill($im, 0, 0, $bg);
 		$line = imagecolorallocate($im, 100, 100, 100);
 		for($i = 0; $i < 5; ++$i){
-			imageline($im, 0, mt_rand(0, 200), 150, mt_rand(0, 200), $line);
+			imageline($im, 0, random_int(0, 200), 150, random_int(0, 200), $line);
 		}
 		$dots = imagecolorallocate($im, 200, 200, 200);
 		for($i = 0; $i < 1000; ++$i){
-			imagesetpixel($im, mt_rand(0, 150), mt_rand(0, 200), $dots);
+			imagesetpixel($im, random_int(0, 150), random_int(0, 200), $dots);
 		}
 		$chars = [];
 		for($i = 0; $i < 10; ++$i){
 			$found = false;
 			while(!$found){
-				$x = mt_rand(10, 140);
-				$y = mt_rand(10, 180);
+				$x = random_int(10, 140);
+				$y = random_int(10, 180);
 				$found = true;
 				foreach($chars as $char){
 					if($char['x'] >= $x && ($char['x'] - $x) < 25){
@@ -302,7 +303,7 @@ function send_captcha(): void
 			$chars[$i]['x'] = $x;
 			$chars[$i]['y'] = $y;
 			if($i < 5){
-				imagechar($im, 5, $chars[$i]['x'], $chars[$i]['y'], $captchachars[mt_rand(0, $length)], $fg);
+				imagechar($im, 5, $chars[$i]['x'], $chars[$i]['y'], $captchachars[random_int(0, $length)], $fg);
 			}else{
 				imagechar($im, 5, $chars[$i]['x'], $chars[$i]['y'], $code[$i-5], $fg);
 			}
@@ -324,7 +325,7 @@ function send_captcha(): void
 function check_login() : array {
 	session_start();
 	if(empty($_SESSION['csrf_token'])){
-		$_SESSION['csrf_token']=sha1(uniqid());
+		$_SESSION['csrf_token']=bin2hex(random_bytes(32));
 	}
 	if(empty($_SESSION['hosting_username']) || !empty($_SESSION['2fa_code'])){
 		header('Location: login.php');
@@ -401,9 +402,10 @@ NumPrimaryGuards '.NUM_GUARDS.'
 			continue;
 		}
 		if(!file_exists("/var/lib/tor-instances/$instance/hidden_service_$tmp[onion].onion")){
+			$decrypted_key = decrypt_private_key($tmp['private_key']);
 			if($tmp['version']==2){
 				//php openssl implementation has some issues, re-export using native openssl
-				$pkey=openssl_pkey_get_private($tmp['private_key']);
+				$pkey=openssl_pkey_get_private($decrypted_key);
 				openssl_pkey_export($pkey, $exported);
 				$priv_key=shell_exec('echo ' . escapeshellarg($exported) . ' | openssl rsa');
 				//save hidden service
@@ -414,9 +416,9 @@ NumPrimaryGuards '.NUM_GUARDS.'
 				chown("/var/lib/tor-instances/$instance/hidden_service_$tmp[onion].onion/private_key", "_tor-$instance");
 				chgrp("/var/lib/tor-instances/$instance/hidden_service_$tmp[onion].onion/", "_tor-$instance");
 				chgrp("/var/lib/tor-instances/$instance/hidden_service_$tmp[onion].onion/private_key", "_tor-$instance");
-				$update_onion->execute([$priv_key, $tmp['onion']]);
+				$update_onion->execute([encrypt_private_key($priv_key), $tmp['onion']]);
 			}elseif($tmp['version']==3){
-				$priv_key=base64_decode($tmp['private_key']);
+				$priv_key=base64_decode($decrypted_key);
 				//save hidden service
 				mkdir("/var/lib/tor-instances/$instance/hidden_service_$tmp[onion].onion", 0700);
 				file_put_contents("/var/lib/tor-instances/$instance/hidden_service_$tmp[onion].onion/hs_ed25519_secret_key", $priv_key);
@@ -500,8 +502,15 @@ function rewrite_nginx_config(): void
 	$nginx='';
 	$rewrites = [];
 	// rewrite rules
+	$valid_flags = ['', 'last', 'break', 'redirect', 'permanent'];
 	$stmt = $db->query('SELECT user_id, regex, replacement, flag, ifnotexists FROM nginx_rewrites;');
 	while($tmp = $stmt->fetch(PDO::FETCH_ASSOC)){
+		// sanitize: reject values containing single quotes or semicolons to prevent nginx config injection
+		if(str_contains($tmp['regex'], "'") || str_contains($tmp['regex'], ';') ||
+		   str_contains($tmp['replacement'], "'") || str_contains($tmp['replacement'], ';') ||
+		   !in_array($tmp['flag'], $valid_flags, true)){
+			continue;
+		}
 		if(!isset($rewrites[$tmp['user_id']])){
 			$rewrites[$tmp['user_id']] = '';
 		}
@@ -631,6 +640,16 @@ function rewrite_php_config(string $key): void
 {
 	$db = get_db_instance();
 	$stmt=$db->prepare("SELECT system_account FROM users WHERE instance = ? AND php=? AND todelete!=1 AND id NOT IN (SELECT user_id FROM new_account);");
+	// collect user sockets that need to move between PHP versions
+	$all_accounts = [];
+	$tmp_stmt=$db->prepare("SELECT system_account FROM users WHERE instance = ? AND todelete!=1 AND id NOT IN (SELECT user_id FROM new_account);");
+	$tmp_stmt->execute([$key]);
+	while($row=$tmp_stmt->fetch(PDO::FETCH_ASSOC)){
+		$sa = sanitize_system_account($row['system_account']);
+		if($sa !== false){
+			$all_accounts[] = $sa;
+		}
+	}
 	foreach(array_replace(PHP_VERSIONS, DISABLED_PHP_VERSIONS) as $php_key => $version){
 		$stmt->execute([$key, $php_key]);
 			$php = "[www]
@@ -672,6 +691,12 @@ env[HOME]=/
 			mkdir("/etc/php/$version/fpm/pool.d/$key/", 0755, true);
 		}
 		file_put_contents("/etc/php/$version/fpm/pool.d/$key/www.conf", $php);
+	}
+	// remove stale sockets before restarting, then restart each version
+	foreach($all_accounts as $sa){
+		@unlink("/run/php/$sa");
+	}
+	foreach(array_replace(PHP_VERSIONS, DISABLED_PHP_VERSIONS) as $php_key => $version){
 		exec('systemctl restart '.escapeshellarg("php$version-fpm@$key"));
 	}
 }
@@ -747,7 +772,7 @@ function add_user_onion(int $user_id, string $onion, string $priv_key, int $onio
 	$db = get_db_instance();
 	$stmt=$db->prepare('INSERT INTO onions (user_id, onion, private_key, version, enabled, enable_smtp, instance) VALUES (?, ?, ?, ?, 1, 0, ?);');
 	$instance = get_new_tor_instance();
-	$stmt->execute([$user_id, $onion, $priv_key, $onion_version, $instance]);
+	$stmt->execute([$user_id, $onion, encrypt_private_key($priv_key), $onion_version, $instance]);
 	enqueue_instance_reload($instance);
 }
 
@@ -822,11 +847,36 @@ function enqueue_instance_reload($instance = null): void
 	}
 }
 
+function encrypt_private_key(string $key): string {
+	if(empty(ONION_KEY_ENCRYPTION_KEY)){
+		return $key;
+	}
+	$enc_key = hex2bin(ONION_KEY_ENCRYPTION_KEY);
+	$nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+	$cipher = sodium_crypto_secretbox($key, $nonce, $enc_key);
+	return 'enc:' . base64_encode($nonce . $cipher);
+}
+
+function decrypt_private_key(string $data): string {
+	if(!str_starts_with($data, 'enc:')){
+		return $data; // not encrypted (legacy)
+	}
+	$enc_key = hex2bin(ONION_KEY_ENCRYPTION_KEY);
+	$raw = base64_decode(substr($data, 4));
+	$nonce = substr($raw, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+	$cipher = substr($raw, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+	$plain = sodium_crypto_secretbox_open($cipher, $nonce, $enc_key);
+	if($plain === false){
+		return ''; // decryption failed
+	}
+	return $plain;
+}
+
 function get_db_instance() : PDO {
 	static $db = null;
 	if($db === null){
 		try{
-			$db=new PDO('mysql:host=' . DBHOST . ';dbname=' . DBNAME, DBUSER, DBPASS, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_WARNING, PDO::ATTR_PERSISTENT=>PERSISTENT]);
+			$db=new PDO('mysql:host=' . DBHOST . ';dbname=' . DBNAME, DBUSER, DBPASS, [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_PERSISTENT=>PERSISTENT]);
 		}catch(PDOException $e){
 			die(_('No Connection to MySQL database!'));
 		}
@@ -1098,6 +1148,10 @@ function dashboard_menu(array $user, string $current_site): void
 function print_header(string $sub_title, string $style = '', string $base_target = '_self'): void
 {
     global $language, $dir;
+    header('X-Frame-Options: DENY');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: no-referrer');
+    header("Content-Security-Policy: default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'");
 ?>
 <!DOCTYPE html><html lang="<?php echo $language; ?>" dir="<?php echo $dir; ?>"><head>
 <title><?php echo htmlspecialchars(SITE_NAME) . ' - ' . htmlspecialchars($sub_title); ?></title>
