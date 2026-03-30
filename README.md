@@ -1,152 +1,161 @@
-General Information:
---------------------
+# Tor Shared Hosting
 
-This is a setup for a Tor based shared hosting server. It is provided as is and before putting it into production you should make changes according to your needs. This is a work in progress and you should carefully check the commit history for changes before updating.
-For a production server, at least 1TB of SSD disk space, 32GB RAM and 8 CPU cores is recommended. For a small testing/personal server, 4GB RAM and 1 CPU core is enough.
+A Tor-based shared hosting platform with PHP, MySQL, SFTP, email, and web-based management. Fork of [DanWin/hosting](https://github.com/DanWin/hosting) with Debian 13 support, PHP 8.4/8.5, security hardening, and automated installation.
 
-Translation:
---------------------------
+## Features
 
-Translations are managed in [Weblate](https://weblate.danwin1210.de/projects/DanWin/hosting).
-If you prefer manually submitting translations, the script `update-translations.sh` can be used to update the language template and translation files from source.
-It will generate the file `var/www/locale/hosting.pot` which you can then use as basis to create a new language file in `var/www/YOUR_LANG_CODE/LC_MESSAGES/hosting.po` and edit it with a translation program, such as [Poedit](https://poedit.net/).
-Once you are done, you can open a pull request, or [email me](mailto:daniel@danwin1210.de), to include the translation.
+- PHP 8.2, 8.3, 8.4, 8.5 (user-selectable from dashboard)
+- Nginx, MariaDB, Dovecot, Postfix, ClamAV, Rspamd
+- phpMyAdmin, Adminer, SquirrelMail webmail
+- SFTP and SSH shell access per user
+- Web-based file manager
+- PGP-based two-factor authentication
+- Per-user .onion domains and optional clearnet domains
+- Auto-scaling Tor instances (1 per ~250 accounts)
+- Vanity .onion address generation via mkp224o
+- Zero JavaScript — all pages work without JS
+- Security hardened (CSP, CSRF, XSS protection, encrypted keys at rest)
 
-Installation Instructions:
---------------------------
+## Requirements
 
-The configuration was tested with a standard Debian bookworm and Ubuntu 24.04 LTS installation. It's recommended you install Debian bookworm (or newer) on your server, but with a little tweaking you may also get this working on other distributions and/or versions. If you want to build it on a raspberry pi, please do not use the raspbian images as several things will break. Download an image for your pi model from [https://raspi.debian.net/daily-images/](https://raspi.debian.net/daily-images/) instead.
+- **OS:** Debian 13 (Trixie) or Ubuntu 24.04 LTS
+- **Production:** 1TB SSD, 32GB RAM, 8 CPU cores
+- **Testing/Personal:** 20GB disk, 4GB RAM, 1 CPU core
 
-Because I regularly get asked to make a video tutorial on how to set this up, I decided to create a tutorial which you can [watch on YouTube](https://www.youtube.com/watch?v=f2-SOlnIYmg). It is basically just copy-pasting commands, but maybe it helps someone.
+## Quick Install
 
-Uninstall packages that may interfere with this setup:
-```
-DEBIAN_FRONTEND=noninteractive apt purge -y apache2* dnsmasq* eatmydata exim4* imagemagick-6-common mysql-client* mysql-server* nginx* libnginx-mod* php7* resolvconf && systemctl disable systemd-resolved.service && systemctl stop systemd-resolved.service
-```
+One-liner (downloads and runs the installer):
 
-If you have problems resolving hostnames after this step, temporarily switch to a public nameserver like 1.1.1.1 (from CloudFlare) or 8.8.8.8 (from Google)
-
-```
-rm /etc/resolv.conf && echo "nameserver 1.1.1.1" > /etc/resolv.conf
-```
-
-Add additional repositories:
-```
-apt update && apt install git apt-transport-tor curl lsb-release
-curl -sSL https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc > /etc/apt/trusted.gpg.d/torproject.asc
-curl -sSL https://packages.sury.org/nginx/apt.gpg > /etc/apt/trusted.gpg.d/sury.gpg
-echo "deb tor://apow7mjfryruh65chtdydfmqfpj5btws7nbocgtaovhvezgccyjazpqd.onion/torproject.org/ `lsb_release -cs` main" >> /etc/apt/sources.list
-echo "deb https://packages.sury.org/nginx/ `lsb_release -cs` main" >> /etc/apt/sources.list
-apt update && apt upgrade
+```bash
+curl -sSL https://raw.githubusercontent.com/bigbong420/hosting/upgrades/install.sh | bash
 ```
 
-Install git and clone this repository
+Non-interactive with random passwords:
 
-```
-apt update && apt install git && git clone https://github.com/DanWin/hosting && cd hosting
-```
-
-Install custom optimized binaries
-```
-./install_binaries.sh
+```bash
+curl -sSL https://raw.githubusercontent.com/bigbong420/hosting/upgrades/install.sh | bash -s -- --non-interactive
 ```
 
-Note that debian also has an onion service package archive, so you may want to edit /etc/apt/sources.list to load from there instead:
-```
-deb tor://2s4yqjx5ul6okpp3f2gaunr2syex5jgbfpfvhxxbbjwnrsvbk5v3qbid.onion/debian `lsb_release -cs` main
+With vanity .onion address:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bigbong420/hosting/upgrades/install.sh | bash -s -- --non-interactive --vanity mysite
 ```
 
-Copy (and modify according to your needs) the site files in `var/www` to `/var/www` and the configuration files in `etc` to `/etc` after installation has finished. Then restart some services:
-```
-systemctl daemon-reload && systemctl restart bind9.service && systemctl restart tor@default.service
+## Manual Install
+
+```bash
+git clone -b upgrades https://github.com/bigbong420/hosting.git
+cd hosting
+./install.sh
 ```
 
-Replace the default .onion domain with your domain:
+## Install Options
+
 ```
-sed -i "s/dhosting4xxoydyaivckq7tsmtgi4wfs3flpeyitekkmqwu4v4r46syd.onion/`cat /var/lib/tor/hidden_service/hostname`/g" /etc/postfix/sql/alias.cf /etc/postfix/sender_login_maps /etc/postfix/main.cf /var/www/skel/www/index.hosting.html /var/www/common.php /etc/postfix/canonical /etc/postfix-clearnet/canonical /var/www/html/squirrelmail/config/config.php
+./install.sh [OPTIONS]
+
+  --non-interactive     Skip all prompts, generate random passwords
+  --skip-binaries       Skip compiling PHP/ImageMagick (use if already built)
+  --vanity <prefix>     Generate a vanity .onion address (a-z, 2-7 only)
+  --vanity-threads <n>  Threads for vanity generation (default: nproc)
+  --db-pass <pass>      Set hosting MySQL password
+  --pma-pass <pass>     Set phpMyAdmin MySQL password
+  --admin-pass <pass>   Set admin panel password
 ```
 
-For your clearnet domain, you need to add it to `relay_domains` in `/etc/postfix/main.cf` and edit the default domain in the following files:
-```
-/var/www/common.php
-/etc/postfix/canonical
-/etc/postfix-clearnet/canonical
+Vanity generation times (approximate):
+| Prefix length | Time |
+|---|---|
+| 3 chars | seconds |
+| 4 chars | minutes |
+| 5 chars | 10-30 minutes |
+| 6 chars | hours |
+| 7+ chars | days |
+
+## Updating
+
+```bash
+cd /root/hosting
+./update.sh              # Update code, preserve config
+./update.sh --rebuild    # Also rebuild PHP/ImageMagick
+./update.sh --code-only  # Only update PHP files
 ```
 
-This setup has two postfix instances, one for receiving and sending mail to other .onion services and one for rewriting addresses to pass them on to a clearnet facing mail relay. You may or may not want to create the second instance by running
-```
+The update script automatically detects if `install_binaries.sh` changed and warns you to rebuild.
+
+## Auto-Scaling
+
+Tor instances scale automatically based on account count (~250 accounts per instance). The `hosting-autoscale.timer` checks hourly and adds instances as needed. Instance IDs go `a` through `z`, then `aa`, `ab`, etc.
+
+## Translation
+
+Translations are managed in [Weblate](https://weblate.danwin1210.de/projects/DanWin/hosting). The script `update-translations.sh` updates language templates. New translations go in `var/www/YOUR_LANG_CODE/LC_MESSAGES/hosting.po`.
+
+## Manual Configuration
+
+After install, you can customize:
+
+- **`/var/www/common.php`** — all settings (DB, passwords, PHP versions, features)
+- **`/etc/postfix/main.cf`** — mail configuration
+- **`/etc/nginx/sites-enabled/default`** — web server config (auto-generated by `setup.php`)
+
+For clearnet domains, add to `relay_domains` in `/etc/postfix/main.cf` and edit:
+- `/var/www/common.php`
+- `/etc/postfix/canonical`
+- `/etc/postfix-clearnet/canonical`
+
+For a second postfix instance (clearnet mail relay):
+```bash
 postmulti -e init
 postmulti -I postfix-clearnet -e create
 postmulti -i clearnet -e enable
 postmulti -i clearnet -p start
 ```
-If you created an instance, uncomment the clearnet relay related config in etc/postfix/main.cf and make sure to copy and modify the configuration files from etc/postfix-clearnet too
 
-If you encountered the following issue: `postfix: fatal: chdir(/var/spool/postfix-clearnet): No such file or directory` you can just copy the chroot from the default postfix instance like this `cd /var/spool/ && cp -a postfix/ postfix-clearnet/`
+## Security
 
-After copying (and modifying) the posfix configuration, you need to create databases out of the mapping files (also each time you update those files):
-```
-postalias /etc/aliases
-postmap /etc/postfix/canonical /etc/postfix/sender_login_maps /etc/postfix/transport
-postmap /etc/postfix-clearnet/canonical /etc/postfix-clearnet/sasl_password /etc/postfix-clearnet/transport #only if you have a second instance
-```
+- CSRF tokens use `random_bytes(32)`
+- Admin password stored as bcrypt hash
+- Session regeneration on login
+- All output escaped with `htmlspecialchars()`
+- Nginx rewrite rules validated against injection
+- Onion private keys encrypted at rest (libsodium)
+- SFTP passwords encrypted in session with 1hr expiry
+- Admin login rate-limited (exponential backoff)
+- Content Security Policy: `script-src 'none'`
+- No JavaScript anywhere
 
-To save temporary files in memory, add the following to `/etc/fstab`:
-```
-tmpfs /tmp tmpfs defaults,noatime 0 0
-tmpfs /var/log/nginx tmpfs rw,user,noatime 0 0
-```
+## Architecture
 
-To harden the system and hide pids from non-root users, also add the following:
 ```
-proc /proc proc defaults,hidepid=2 0 0
-```
-
-And add the `noatime,usrjquota=aquota.user,jqfmt=vfsv1` options to the `/home` mountpoint, then initialize quota. Replace `/home` with `/`, if you do not have a separate partition:
-```
-systemctl daemon-reload
-mount -o remount $(findmnt -n -o TARGET --target /home)
-quotacheck -cMu $(findmnt -n -o TARGET --target /home)
-quotaon $(findmnt -n -o TARGET --target /home)
+/var/www/common.php      — shared config and functions
+/var/www/html/           — web interface (register, login, dashboard, admin)
+/var/www/setup.php       — database schema + service provisioning
+/var/www/cron.php        — account provisioning (runs every minute)
+/var/www/autoscale.php   — instance scaling (runs hourly)
+/etc/systemd/system/     — PHP-FPM, Tor, timer service files
+/etc/nginx/              — web server config
+/etc/tor/                — Tor config
+/etc/postfix/            — mail config
 ```
 
-In some cases, you might get an error, that quota is not supported. This is usually the case in virtual environments. Make sure you have the full kernel installed, not one with a `-virtual` package. They usually are `linux-image-amd64`, `linux-image-arm64` or `linux-image-generic`, depending on your distribution. Also make sure, you are running a real virtual machine (e.g. KVM). Some providers sell containerized VPSes (e.g. OpenVZ), which means you don't run your own kernel...
+## TODO: Multi-Server / Clustering
 
-Install sodium_compat for v3 hidden_service support
-```
-cd /var/www && composer install
-```
+- [ ] **Database replication** — MariaDB primary-replica setup for read scaling and failover
+- [ ] **Shared storage** — GlusterFS or CephFS for `/home` across nodes so user files are accessible from any server
+- [ ] **Load balancer** — HAProxy or nginx stream proxy in front of multiple Tor-facing nodes
+- [ ] **Centralized config** — move `common.php` settings to a shared database or etcd so config changes propagate to all nodes
+- [ ] **Cross-node instance assignment** — extend `get_new_tor_instance()` to assign accounts to instances across multiple servers based on load
+- [ ] **Distributed autoscale** — autoscale.php should track per-server capacity and spin up instances on the least-loaded server
+- [ ] **Session sharing** — Redis-based PHP sessions so users can hit any node
+- [ ] **Mail routing** — single Postfix relay that routes to the correct node based on account location
+- [ ] **Health monitoring** — centralized health checks across nodes (service status, disk, Tor circuit health)
+- [ ] **Rolling updates** — update.sh should support updating one node at a time with traffic draining
+- [ ] **Onion key migration** — tool to move an account (onion keys, files, databases) between servers
+- [ ] **Shared ClamAV/Rspamd** — run scanning services on dedicated nodes instead of every hosting node
+- [ ] **Backup orchestration** — coordinated backups across nodes with point-in-time recovery
 
-Create a mysql user for phpmyadmin and cofigure it in `/var/www/html/phpmyadmin/config.inc.php` and fill `$cfg['blowfish_secret']` with random characters:
-```
-mysql
-CREATE USER 'phpmyadmin'@'%' IDENTIFIED BY 'MY_PASSWORD';
-CREATE DATABASE phpmyadmin;
-GRANT ALL PRIVILEGES ON phpmyadmin.* TO 'phpmyadmin'@'%';
-FLUSH PRIVILEGES;
-quit
-mysql phpmyadmin < /var/www/html/phpmyadmin/sql/create_tables.sql
-```
+## License
 
-Create a mysql user with all permissions for our hosting management:
-```
-mysql
-CREATE USER 'hosting'@'%' IDENTIFIED BY 'MY_PASSWORD';
-GRANT ALL PRIVILEGES ON *.* TO 'hosting'@'%' WITH GRANT OPTION;
-FLUSH PRIVILEGES;
-quit
-```
-
-Then edit the database configuration in `/var/www/common.php` and `/etc/postfix/sql/alias.cf`
-
-Last but not least setup the database by running
-```
-php /var/www/setup.php
-``` 
-
-Enable systemd timers to regularly run various managing tasks:
-```
-systemctl enable hosting-del.timer && systemctl enable hosting.timer
-```
-
-Final step is to reboot wait about 5 minutes for all services to start and check if everything is working by creating a test account.
+See [COPYING](COPYING) for license information.
