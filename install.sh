@@ -259,8 +259,19 @@ if [ "$IS_UBUNTU" = false ]; then
         echo "deb https://packages.sury.org/nginx/ $CODENAME main" >> /etc/apt/sources.list
 fi
 
+# Prevent Ubuntu from auto-rebooting during upgrade
+if [ "$IS_UBUNTU" = true ]; then
+    systemctl mask needrestart.service 2>/dev/null || true
+    export NEEDRESTART_SUSPEND=1
+    export NEEDRESTART_MODE=l
+fi
+
 apt update -qq
 DEBIAN_FRONTEND=noninteractive apt upgrade -y
+
+if [ "$IS_UBUNTU" = true ]; then
+    systemctl unmask needrestart.service 2>/dev/null || true
+fi
 log_ok "Repositories configured"
 if [ "$SKIP_BINARIES" = true ]; then
     log_step "Step 3: Skipping binary compilation (--skip-binaries)"
