@@ -332,7 +332,7 @@ systemctl daemon-reload
 log_ok "PHP-FPM service files created for 8.2, 8.3, 8.4, 8.5"
 log_step "Step 7: Configure Tor"
 
-systemctl restart bind9.service
+systemctl restart bind9.service 2>/dev/null || systemctl restart named.service 2>/dev/null || true
 systemctl restart tor@default.service
 sleep 3
 
