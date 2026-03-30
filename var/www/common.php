@@ -639,7 +639,7 @@ function rewrite_nginx_config(): void
 function rewrite_php_config(string $key): void
 {
 	$db = get_db_instance();
-	$all_versions = $all_versions;
+	$all_versions = array_replace(PHP_VERSIONS, DISABLED_PHP_VERSIONS);
 	$stmt=$db->prepare("SELECT system_account FROM users WHERE instance = ? AND php=? AND todelete!=1 AND id NOT IN (SELECT user_id FROM new_account);");
 	$all_accounts = [];
 	$tmp_stmt=$db->prepare("SELECT system_account FROM users WHERE instance = ? AND todelete!=1 AND id NOT IN (SELECT user_id FROM new_account);");

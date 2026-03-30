@@ -370,6 +370,8 @@ ADMIN_HASH=$(php8.2 -r "echo password_hash('$ADMIN_PASS', PASSWORD_DEFAULT);" 2>
 sed -i "s|const DBPASS='MY_PASSWORD'|const DBPASS='$DB_HOSTING_PASS'|" /var/www/common.php
 sed -i "s|const ADMIN_PASSWORD='MY_PASSWORD'|const ADMIN_PASSWORD='$ADMIN_HASH'|" /var/www/common.php
 sed -i "s|const ONION_KEY_ENCRYPTION_KEY=''|const ONION_KEY_ENCRYPTION_KEY='$ONION_ENC_KEY'|" /var/www/common.php
+sed -i "s|password = MY_PASSWORD|password = $DB_HOSTING_PASS|" /etc/postfix/sql/alias.cf
+sed -i "s|hosts = localhost|hosts = 127.0.0.1|" /etc/postfix/sql/alias.cf
 
 # Replace default onion domain everywhere
 DEFAULT_ONION="dhosting4xxoydyaivckq7tsmtgi4wfs3flpeyitekkmqwu4v4r46syd.onion"
