@@ -531,6 +531,8 @@ systemctl start hosting-autoscale.timer
 sed -i 's/^Subsystem/#Subsystem/' /etc/ssh/sshd_config
 systemctl restart nginx postfix dovecot
 systemctl restart tor@default.service
+rm -r /var/www/html/index.nginx-debian.html
+
 
 log_ok "Timers enabled, services configured"
 log_step "Installation Complete"
