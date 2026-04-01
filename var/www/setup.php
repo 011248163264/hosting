@@ -322,7 +322,7 @@ server {
 			include snippets/fastcgi-php.conf;
 			fastcgi_param DOCUMENT_ROOT /html;
 			fastcgi_param SCRIPT_FILENAME /html$fastcgi_script_name;
-			fastcgi_pass unix:/var/run/php/8.2-hosting;
+			fastcgi_pass unix:/var/run/php/' . DEFAULT_PHP_VERSION . '-hosting;
 		}
 	}
 	location /squirrelmail {
@@ -330,7 +330,7 @@ server {
 			include snippets/fastcgi-php.conf;
 			fastcgi_param DOCUMENT_ROOT /html;
 			fastcgi_param SCRIPT_FILENAME /html$fastcgi_script_name;
-			fastcgi_pass unix:/var/run/php/8.2-squirrelmail;
+			fastcgi_pass unix:/var/run/php/' . DEFAULT_PHP_VERSION . '-squirrelmail;
 		}
 	}
 	location /phpmyadmin {
@@ -338,7 +338,7 @@ server {
 			include snippets/fastcgi-php.conf;
 			fastcgi_param DOCUMENT_ROOT /html;
 			fastcgi_param SCRIPT_FILENAME /html$fastcgi_script_name;
-			fastcgi_pass unix:/run/php/8.2-phpmyadmin;
+			fastcgi_pass unix:/run/php/' . DEFAULT_PHP_VERSION . '-phpmyadmin;
 		}
 	}
 	location /adminer {
@@ -347,7 +347,7 @@ server {
 			include snippets/fastcgi-php.conf;
 			fastcgi_param DOCUMENT_ROOT /html/adminer;
 			fastcgi_param SCRIPT_FILENAME /html/adminer$fastcgi_script_name;
-			fastcgi_pass unix:/run/php/8.2-adminer;
+			fastcgi_pass unix:/run/php/' . DEFAULT_PHP_VERSION . '-adminer;
 		}
 	}
 	location /externals/jush/ {
@@ -381,8 +381,8 @@ foreach(SERVICE_INSTANCES as $instance){
 		rewrite_torrc($instance);
 		exec("systemctl enable ".escapeshellarg("tor@$instance"));
 		exec("systemctl start ".escapeshellarg("tor@$instance"));
+		rewrite_php_config($instance);
 		foreach(PHP_VERSIONS as $version){
-			rewrite_php_config($instance);
 			exec("systemctl enable ".escapeshellarg("php$version-fpm@$instance"));
 			exec("systemctl start ".escapeshellarg("php$version-fpm@$instance"));
 		}

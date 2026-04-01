@@ -11,10 +11,27 @@ print_header(_('Admin panel'), 'td{padding:5px;}', '_blank');
 <h1><?php echo _('Hosting - Admin panel'); ?></h1>
 <?php
 $error=false;
-if($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['pass']) && $_POST['pass']===ADMIN_PASSWORD){
-	if(!($error=check_captcha_error())){
-		$_SESSION['logged_in']=true;
-		$_SESSION['csrf_token']=sha1(uniqid());
+$rate_limited=false;
+if(!isset($_SESSION['admin_attempts'])){
+	$_SESSION['admin_attempts']=0;
+	$_SESSION['admin_last_attempt']=0;
+}
+if($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['pass'])){
+	// rate limit: after 5 failed attempts, enforce increasing delay
+	$delay = min(pow(2, max(0, $_SESSION['admin_attempts'] - 4)), 60);
+	if($_SESSION['admin_attempts'] >= 5 && (time() - $_SESSION['admin_last_attempt']) < $delay){
+		$rate_limited=true;
+		$error=sprintf(_('Too many failed attempts. Please wait %d seconds.'), $delay - (time() - $_SESSION['admin_last_attempt']));
+	}elseif(password_verify($_POST['pass'], ADMIN_PASSWORD)){
+		if(!($error=check_captcha_error())){
+			session_regenerate_id(true);
+			$_SESSION['logged_in']=true;
+			$_SESSION['csrf_token']=bin2hex(random_bytes(32));
+			$_SESSION['admin_attempts']=0;
+		}
+	}else{
+		$_SESSION['admin_attempts']++;
+		$_SESSION['admin_last_attempt']=time();
 	}
 }
 if(empty($_SESSION['logged_in'])){
@@ -25,7 +42,7 @@ if(empty($_SESSION['logged_in'])){
 	echo '</table></form>';
 	if($error){
 		echo '<p role="alert" style="color:red">'.$error.'</p>';
-	}elseif(isset($_POST['pass'])){
+	}elseif(isset($_POST['pass']) && !$rate_limited){
 		echo '<p role="alert" style="color:red">'._('Wrong password!').'</p>';
 	}
 	echo '<p>'._("If you disabled cookies, please re-enable them. You can't log in without!").'</p>';
@@ -54,7 +71,7 @@ if(empty($_SESSION['logged_in'])){
 			$accounts[$tmp[0]] []= [$tmp[1], $tmp[2]];
 		}
 		foreach($accounts as $account => $onions){
-			echo "<tr><td>$account</td><td>";
+			echo '<tr><td>'.htmlspecialchars($account, ENT_QUOTES, 'UTF-8').'</td><td>';
 			$first = true;
 			foreach($onions as $onion){
 				if($first){
@@ -62,10 +79,11 @@ if(empty($_SESSION['logged_in'])){
 				}else{
 					echo '<br>';
 				}
+				$safe_onion = htmlspecialchars($onion[0], ENT_QUOTES, 'UTF-8');
 				if($onion[1]=='1'){
-					echo "<a href=\"http://$onion[0].onion\">$onion[0].onion</a>";
+					echo "<a href=\"http://$safe_onion.onion\">$safe_onion.onion</a>";
 				}else{
-					echo "$onion[0].onion";
+					echo "$safe_onion.onion";
 				}
 			}
 			echo '</td><td><button type="submit" name="action" value="edit_'.$onions[0][0].'">'._('Edit').'</button><button type="submit" name="action" value="delete_'.$onions[0][0].'">'._('Delete').'</button><button type="submit" name="action" value="suspend_'.$onions[0][0].'">'._('Suspend').'</button></td></tr>';
@@ -88,7 +106,9 @@ if(empty($_SESSION['logged_in'])){
 		echo '<tr><th>'._('Username').'</th><th>'._('Onion address').'</th><th>'._('Action').'</th></tr>';
 		$stmt=$db->query('SELECT users.username, onions.onion FROM users INNER JOIN new_account ON (users.id=new_account.user_id) INNER JOIN onions ON (onions.user_id=users.id) WHERE new_account.approved=0 ORDER BY users.username;');
 		while($tmp=$stmt->fetch(PDO::FETCH_NUM)){
-			echo "<tr><td>$tmp[0]</td><td><a href=\"http://$tmp[1].onion\">$tmp[1].onion</a></td><td><button type=\"submit\" name=\"action\" value=\"approve_$tmp[1]\">"._('Approve').'</button><button type="submit" name="action" value="delete_'.$tmp[1].'">'._('Delete').'</button></td></tr>';
+			$safe_user = htmlspecialchars($tmp[0], ENT_QUOTES, 'UTF-8');
+			$safe_onion = htmlspecialchars($tmp[1], ENT_QUOTES, 'UTF-8');
+			echo "<tr><td>$safe_user</td><td><a href=\"http://$safe_onion.onion\">$safe_onion.onion</a></td><td><button type=\"submit\" name=\"action\" value=\"approve_$safe_onion\">"._('Approve').'</button><button type="submit" name="action" value="delete_'.$safe_onion.'">'._('Delete').'</button></td></tr>';
 		}
 		echo '</table></form>';
 	}elseif( str_starts_with( $_REQUEST[ 'action' ], 'delete' ) ){

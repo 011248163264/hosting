@@ -2,6 +2,9 @@
 require('../common.php');
 header('Content-Type: text/html; charset=UTF-8');
 session_start();
+if(empty($_SESSION['login_csrf'])){
+	$_SESSION['login_csrf']=bin2hex(random_bytes(32));
+}
 if(!empty($_SESSION['hosting_username']) && empty($_SESSION['2fa_code'])){
 	header('Location: home.php');
 	exit;
@@ -29,7 +32,10 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 	} else {
 		$db = get_db_instance();
 		$ok=true;
-		if($error=check_captcha_error()){
+		if(!isset($_POST['login_csrf']) || !hash_equals($_SESSION['login_csrf'], $_POST['login_csrf'])){
+			$msg.='<p role="alert" style="color:red">'._('Error: Invalid request token.').'</p>';
+			$ok=false;
+		}elseif($error=check_captcha_error()){
 			$msg.='<p role="alert" style="color:red">'.$error.'</p>';
 			$ok=false;
 		}elseif(!isset($_POST['username']) || $_POST['username']===''){
@@ -52,24 +58,21 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 				$stmt=$db->prepare('SELECT new_account.approved FROM new_account INNER JOIN users ON (users.id=new_account.user_id) WHERE users.id=?;');
 				$stmt->execute([$tmp['id']]);
 				if($tmp=$stmt->fetch(PDO::FETCH_NUM)){
-					if(REQUIRE_APPROVAL && !$tmp[0]){
-						$msg.='<p role="alert" style="color:red">'._('Error: Your account is pending admin approval. Please try again later.').'</p>';
-					}else{
-						$msg.='<p role="alert" style="color:red">'._('Error: Your account is pending creation. Please try again in a minute.').'</p>';
-					}
+					$msg.='<p role="alert" style="color:red">'._('Error: Invalid username or password.').'</p>';
 					$ok=false;
 				}elseif(!isset($_POST['pass']) || !password_verify($_POST['pass'], $password)){
-					$msg.='<p role="alert" style="color:red">'._('Error: wrong password.').'</p>';
+					$msg.='<p role="alert" style="color:red">'._('Error: Invalid username or password.').'</p>';
 					$ok=false;
 				}
 			}else{
-				$msg.='<p role="alert" style="color:red">'._('Error: username was not found. If you forgot it, you can enter youraccount.onion instead.').'</p>';
+				$msg.='<p role="alert" style="color:red">'._('Error: Invalid username or password.').'</p>';
 				$ok=false;
 			}
 		}
 		if($ok){
+			session_regenerate_id(true);
 			$_SESSION['hosting_username']=$username;
-			$_SESSION['csrf_token']=sha1(uniqid());
+			$_SESSION['csrf_token']=bin2hex(random_bytes(32));
 			if($tfa){
 				$code = bin2hex(random_bytes(3));
 				$_SESSION['2fa_code'] = $code;
@@ -101,7 +104,7 @@ if($tfa){
 		$encrypted = gnupg_encrypt($gpg, _('To login, please enter the following code to confirm ownership of your key:')."\n\n".$_SESSION['2fa_code']."\n");
 		echo $msg;
 		echo '<p>'._('To login, please decrypt the following PGP encrypted message and confirm the code:').'</p>';
-		echo "<textarea readonly=\"readonly\" onclick=\"this.select()\" rows=\"10\" cols=\"70\">$encrypted</textarea>";
+		echo '<textarea readonly="readonly" rows="10" cols="70">'.htmlspecialchars($encrypted, ENT_QUOTES, 'UTF-8').'</textarea>';
 		?>
 		<form action="login.php" method="post"><input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
 		<table border="1">
@@ -119,7 +122,7 @@ if($tfa){
 main_menu('login.php');
 echo $msg;
 ?>
-<form method="POST" action="login.php"><table>
+<form method="POST" action="login.php"><input type="hidden" name="login_csrf" value="<?php echo $_SESSION['login_csrf']; ?>"><table>
 <tr><td><?php echo _('Username'); ?></td><td><input type="text" name="username" value="<?php
 if(isset($_POST['username'])){
 	echo htmlspecialchars($_POST['username']);

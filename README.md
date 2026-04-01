@@ -15,9 +15,47 @@ Once you are done, you can open a pull request, or [email me](mailto:daniel@danw
 Installation Instructions:
 --------------------------
 
-The configuration was tested with a standard Debian bookworm and Ubuntu 24.04 LTS installation. It's recommended you install Debian bookworm (or newer) on your server, but with a little tweaking you may also get this working on other distributions and/or versions. If you want to build it on a raspberry pi, please do not use the raspbian images as several things will break. Download an image for your pi model from [https://raspi.debian.net/daily-images/](https://raspi.debian.net/daily-images/) instead.
+The configuration was tested with Debian 13 (Trixie) and Ubuntu 24.04 LTS. It's recommended you install Debian 13 or Ubuntu 24.04 on your server, but with a little tweaking you may also get this working on other distributions and/or versions. If you want to build it on a raspberry pi, please do not use the raspbian images as several things will break. Download an image for your pi model from [https://raspi.debian.net/daily-images/](https://raspi.debian.net/daily-images/) instead.
 
-Because I regularly get asked to make a video tutorial on how to set this up, I decided to create a tutorial which you can [watch on YouTube](https://www.youtube.com/watch?v=f2-SOlnIYmg). It is basically just copy-pasting commands, but maybe it helps someone.
+### Automated Install
+
+The easiest way to install is with the automated installer:
+
+```
+apt update && apt install git && git clone https://github.com/DanWin/hosting && cd hosting
+./install.sh
+```
+
+The installer handles everything: package installation, PHP/ImageMagick compilation, Tor configuration, MySQL setup, and service provisioning. It will prompt for passwords or generate them automatically.
+
+Options:
+```
+./install.sh --non-interactive        # Skip prompts, generate random passwords
+./install.sh --vanity <prefix>        # Generate a vanity .onion address
+./install.sh --skip-binaries          # Skip compiling (use if already built)
+./install.sh --db-pass <pass>         # Set hosting MySQL password
+./install.sh --pma-pass <pass>        # Set phpMyAdmin MySQL password
+./install.sh --admin-pass <pass>      # Set admin panel password
+```
+
+Vanity .onion generation uses [mkp224o](https://github.com/cathugger/mkp224o) (compiled automatically). Only characters a-z and 2-7 are valid. A 4-char prefix takes minutes, 5 chars takes 10-30 minutes, 6+ chars takes hours.
+
+Credentials are saved to `/root/hosting-credentials.txt`.
+
+### Updating
+
+```
+cd hosting
+./update.sh              # Update code, preserve config
+./update.sh --rebuild    # Also rebuild PHP/ImageMagick
+./update.sh --code-only  # Only update PHP files
+```
+
+The update script backs up your configuration, pulls the latest code, restores passwords and onion address, and restarts services. It detects if `install_binaries.sh` changed and warns you to rebuild.
+
+### Manual Install
+
+If you prefer to install manually, follow the steps below.
 
 Uninstall packages that may interfere with this setup:
 ```
@@ -30,7 +68,7 @@ If you have problems resolving hostnames after this step, temporarily switch to 
 rm /etc/resolv.conf && echo "nameserver 1.1.1.1" > /etc/resolv.conf
 ```
 
-Add additional repositories:
+Add additional repositories (Debian only — Ubuntu has nginx and brotli natively):
 ```
 apt update && apt install git apt-transport-tor curl lsb-release
 curl -sSL https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc > /etc/apt/trusted.gpg.d/torproject.asc
@@ -117,7 +155,7 @@ Install sodium_compat for v3 hidden_service support
 cd /var/www && composer install
 ```
 
-Create a mysql user for phpmyadmin and cofigure it in `/var/www/html/phpmyadmin/config.inc.php` and fill `$cfg['blowfish_secret']` with random characters:
+Create a mysql user for phpmyadmin and configure it in `/var/www/html/phpmyadmin/config.inc.php` and fill `$cfg['blowfish_secret']` with random characters:
 ```
 mysql
 CREATE USER 'phpmyadmin'@'%' IDENTIFIED BY 'MY_PASSWORD';
@@ -142,11 +180,54 @@ Then edit the database configuration in `/var/www/common.php` and `/etc/postfix/
 Last but not least setup the database by running
 ```
 php /var/www/setup.php
-``` 
+```
 
 Enable systemd timers to regularly run various managing tasks:
 ```
-systemctl enable hosting-del.timer && systemctl enable hosting.timer
+systemctl enable hosting-del.timer && systemctl enable hosting.timer && systemctl enable hosting-autoscale.timer
 ```
 
-Final step is to reboot wait about 5 minutes for all services to start and check if everything is working by creating a test account.
+Final step is to reboot, wait about 5 minutes for all services to start, and check if everything is working by creating a test account.
+
+PHP Versions:
+--------------------------
+
+Users can choose between PHP 8.2, 8.3, 8.4, and 8.5 at registration and change their version from the dashboard. The default is PHP 8.5.
+
+Auto-Scaling:
+--------------------------
+
+Tor instances scale automatically based on account count. The `hosting-autoscale.timer` runs hourly and adds a new instance for every ~250 accounts. Instance IDs go `a` through `z`, then `aa`, `ab`, etc. You can also manually set instances in `SERVICE_INSTANCES` in `/var/www/common.php` and run `setup.php`.
+
+Security:
+--------------------------
+
+- CSRF tokens use cryptographically secure random bytes
+- Admin password stored as bcrypt hash
+- Session ID regenerated on login
+- All dynamic output escaped with `htmlspecialchars()`
+- Nginx rewrite rules validated against config injection
+- Onion private keys encrypted at rest with libsodium
+- SFTP passwords encrypted in session with 1-hour expiry
+- Admin login rate-limited with exponential backoff
+- Content Security Policy with `script-src 'none'`
+- No JavaScript on any page
+- Generic login error messages to prevent username enumeration
+- FileManager path traversal protection
+
+TODO: Multi-Server / Clustering:
+--------------------------
+
+- [ ] Database replication (MariaDB primary-replica)
+- [ ] Shared storage for /home across nodes (GlusterFS/CephFS)
+- [ ] Load balancer for Tor-facing nodes
+- [ ] Centralized config (shared database or etcd)
+- [ ] Cross-node instance assignment based on server load
+- [ ] Distributed autoscale across servers
+- [ ] Redis-based PHP session sharing
+- [ ] Mail routing to correct node per account
+- [ ] Health monitoring across nodes
+- [ ] Rolling updates with traffic draining
+- [ ] Onion key migration tool between servers
+- [ ] Shared ClamAV/Rspamd on dedicated nodes
+- [ ] Coordinated backup orchestration

@@ -26,8 +26,9 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 			$stmt->execute([$user['id'], $hash]);
 			$msg.='<p role="alert" style="color:green">'._('Successfully changed system account password, change will take effect within the next minute.').'</p>';
 		}elseif($_REQUEST['type']==='sql'){
-			$stmt=$db->prepare("SET PASSWORD FOR '$user[mysql_user]'@'%'=PASSWORD(?);");
-			$stmt->execute([$_POST['newpass']]);
+			$safe_user = preg_replace('/[^a-zA-Z0-9]/', '', $user['mysql_user']);
+			$stmt=$db->prepare("ALTER USER ?@'%' IDENTIFIED BY ?;");
+			$stmt->execute([$safe_user, $_POST['newpass']]);
 			$db->exec('FLUSH PRIVILEGES;');
 			$msg.='<p role="alert" style="color:green">'._('Successfully changed sql password.').'</p>';
 		}else{
